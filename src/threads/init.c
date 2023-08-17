@@ -458,16 +458,19 @@ run_interactive_shell(void){
       return;
     }
     else if(!strcmp(command, "time")){
-      // TODO: Display the number of seconds passed since Unix epoch
+      // Display the number of seconds passed since Unix epoch
+      printf("%d\n", rtc_get_time());
     }
     else if(!strcmp(command, "ram")){
       // TODO: Display the amount of RAM available for the OS
     }
     else if(!strcmp(command, "thread")){
-      // TODO: Display thread statistics
+      // Display thread statistics
+      thread_print_stats();
     }
     else if(!strcmp(command, "priority")){
-      // TODO: Display the thread priority of the current thread
+      // Display the thread priority of the current thread
+      printf("%d\n", thread_get_priority());
     }
     else if(!strcmp(command, "exit")){
       // Exit the interactive shell
