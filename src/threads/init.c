@@ -457,6 +457,22 @@ run_interactive_shell(void){
       shutdown_configure (SHUTDOWN_POWER_OFF);
       return;
     }
+    else if(!strcmp(command, "time")){
+      // TODO: Display the number of seconds passed since Unix epoch
+    }
+    else if(!strcmp(command, "ram")){
+      // TODO: Display the amount of RAM available for the OS
+    }
+    else if(!strcmp(command, "thread")){
+      // TODO: Display thread statistics
+    }
+    else if(!strcmp(command, "priority")){
+      // TODO: Display the thread priority of the current thread
+    }
+    else if(!strcmp(command, "exit")){
+      // Exit the interactive shell
+      return;
+    }
     else{
       printf("invalid\n");
     }
