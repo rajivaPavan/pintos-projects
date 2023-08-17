@@ -72,6 +72,8 @@ static void locate_block_device (enum block_type, const char *name);
 
 int pintos_init (void) NO_RETURN;
 
+static void run_interactive_shell(void);
+
 /* Pintos main entry point. */
 int
 pintos_init (void)
@@ -133,7 +135,7 @@ pintos_init (void)
     /* Run actions specified on kernel command line. */
     run_actions (argv);
   } else {
-    // TODO: no command line passed to kernel. Run interactively 
+    run_interactive_shell();
   }
 
   /* Finish up. */
@@ -431,3 +433,86 @@ locate_block_device (enum block_type role, const char *name)
     }
 }
 #endif
+
+// Code for interactive shell goes here
+static bool backspace (char **pos, char line[]);
+static void readline (char line[], size_t size);
+
+/// @brief Starts a basic interactive shell that can read lines 
+/// and run one keyword commands.
+static void 
+run_interactive_shell(void){
+  int size = 255;
+  char command[size];
+  while(1){
+    printf("cs2043>");
+    readline(command,sizeof(command));
+    if(!strcmp(command,"whoami")){
+      // Display your name alongside your index number
+      printf("rpp\n");
+    }
+    else if(!strcmp(command, "shutdown")){
+      // Pintos OS will shutdown and exit the qemu emulator
+      // configure the shutdown mode
+      shutdown_configure (SHUTDOWN_POWER_OFF);
+      return;
+    }
+    else{
+      printf("invalid\n");
+    }
+  }
+}
+
+/* If *POS is past the beginning of LINE, backs up one character
+   position.  Returns true if successful, false if nothing was
+   done. */
+static bool
+backspace (char **pos, char line[]) 
+{
+  if (*pos > line)
+    {
+      /* Back up cursor, overwrite character, back up
+         again. */
+      printf ("\b \b");
+      (*pos)--;
+      return true;
+    }
+  else
+    return false;
+}
+
+static void
+readline(char line[], size_t size)
+{
+  char *pos = line;
+   for (;;)
+   {
+        char c = input_getc();
+
+        switch (c)
+        {
+        case '\r':
+          *pos = '\0';
+          putchar('\n');
+          return;
+
+        case '\b':
+          backspace(&pos, line);
+          break;
+
+        case ('U' - 'A') + 1: /* Ctrl+U. */
+          while (backspace(&pos, line))
+            continue;
+          break;
+
+        default:
+          /* Add character to line. */
+          if (pos < line + size - 1)
+          {
+            putchar(c);
+            *pos++ = c;
+          }
+          break;
+        }
+   }
+}
