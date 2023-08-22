@@ -449,7 +449,7 @@ run_interactive_shell(void){
     readline(command,sizeof(command));
     if(!strcmp(command,"whoami")){
       // Display your name alongside your index number
-      printf("rpp\n");
+      printf("Rajiva Pavan Pitiwaduge - 210479L\n");
     }
     else if(!strcmp(command, "shutdown")){
       // Pintos OS will shutdown and exit the qemu emulator
@@ -459,10 +459,12 @@ run_interactive_shell(void){
     }
     else if(!strcmp(command, "time")){
       // Display the number of seconds passed since Unix epoch
-      printf("%d\n", rtc_get_time());
+      printf("Number of seconds passed since UNIX epoch = %d\n", rtc_get_time());
     }
     else if(!strcmp(command, "ram")){
       // TODO: Display the amount of RAM available for the OS
+      printf ("RAM available for the OS %'"PRIu32" kB\n",
+          init_ram_pages * PGSIZE / 1024);
     }
     else if(!strcmp(command, "thread")){
       // Display thread statistics
@@ -470,7 +472,7 @@ run_interactive_shell(void){
     }
     else if(!strcmp(command, "priority")){
       // Display the thread priority of the current thread
-      printf("%d\n", thread_get_priority());
+      printf("Current thread priority = %d\n", thread_get_priority());
     }
     else if(!strcmp(command, "exit")){
       // Exit the interactive shell
