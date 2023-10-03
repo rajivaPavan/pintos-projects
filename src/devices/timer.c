@@ -173,10 +173,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
-  // check sleep list
-  // find any threads to wake up and the global tick
-  // move them to ready list if necessary
-  // TODO: update the global tick
   thread_wakeup(ticks);
 }
 

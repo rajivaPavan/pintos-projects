@@ -325,7 +325,7 @@ bool
 compare_thread_ticks(const struct list_elem *a, const struct list_elem *b, void *aux){
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
-  return thread_a->wakeup_tick < thread_b->wakeup_tick;
+  return thread_a->wakeup_tick > thread_b->wakeup_tick;
 }
 
 void
@@ -345,15 +345,18 @@ thread_sleep(int64_t wakeup_ticks)
 
   old_level = intr_disable();
   if (cur != idle_thread) {
-    list_push_back (&sleep_list, &cur->elem);
-    list_insert_ordered(&sleep_list, &cur->elem, (list_less_func *) &compare_thread_ticks, NULL);
     cur->wakeup_tick = wakeup_ticks;
+    list_insert_ordered(&sleep_list, &cur->elem, (list_less_func *) &compare_thread_ticks, NULL);
     thread_block();
   }
 
   intr_set_level (old_level);
 }
 
+/* Check sleep list
+  Find any threads to wake up and the global tick
+  move them to ready list if necessary
+  TODO: update the global tick */
 void
 thread_wakeup(int64_t ticks)
 {
@@ -368,6 +371,7 @@ thread_wakeup(int64_t ticks)
       
       // wake up the thread
       thread_unblock(t);
+      break;
     }
   }
 }
