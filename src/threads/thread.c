@@ -74,6 +74,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -316,6 +318,58 @@ thread_yield (void)
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
+}
+
+static const 
+bool 
+compare_thread_ticks(const struct list_elem *a, const struct list_elem *b, void *aux){
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+  return thread_a->wakeup_tick < thread_b->wakeup_tick;
+}
+
+void
+thread_sleep(int64_t wakeup_ticks)
+{
+  /* if
+    the current thread is not idle thread,
+    change the state of the caller thread to BLOCKED
+    store the local tick to wake up,
+    TODO: update the global tick if necessary,
+    and call schedule() */
+
+  struct thread *cur = thread_current();
+  enum intr_level old_level;
+
+  ASSERT(!intr_context());
+
+  old_level = intr_disable();
+  if (cur != idle_thread) {
+    list_push_back (&sleep_list, &cur->elem);
+    list_insert_ordered(&sleep_list, &cur->elem, (list_less_func *) &compare_thread_ticks, NULL);
+    cur->wakeup_tick = wakeup_ticks;
+    thread_block();
+  }
+
+  intr_set_level (old_level);
+}
+
+void
+thread_wakeup(int64_t ticks)
+{
+  // loop through the sleep list
+  struct list_elem *e;
+  struct thread *t;
+  for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)) {
+    t = list_entry(e, struct thread, elem);
+    if (ticks >= t->wakeup_tick) {
+      // remove the thread from the sleep list
+      list_remove(e);
+      
+      // wake up the thread
+      thread_unblock(t);
+    }
+  }
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
