@@ -386,8 +386,11 @@ thread_wakeup(int64_t ticks)
       break;
     }
 
-    // remove the thread from the sleep list
+    // remove the thread from the sleep list, disable interrupts to make the list removal atomic
+    enum intr_level old_level = intr_disable();
     list_remove(e);
+    intr_set_level(old_level);
+    
     // wake up the thread
     thread_unblock(t);
   }
