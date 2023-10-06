@@ -27,6 +27,9 @@ static struct list ready_list;
 /* List of processes in THREAD_BLOCKED state */
 static struct list sleep_list;
 
+/* Ticks of the block thread with least ticks */
+static int64_t least_ticks_sleep_thread = INT64_MAX;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -328,16 +331,15 @@ compare_thread_ticks(const struct list_elem *a, const struct list_elem *b, void 
   return thread_a->wakeup_tick > thread_b->wakeup_tick;
 }
 
+/*
+ * If the current thread is not the idle thread, change the state of the caller thread to BLOCKED.
+ * Store the local tick to wake up the thread.
+ * If the local tick is greater than the global tick, update the global tick to the local tick.
+ * Call the scheduler to select a new thread to run.
+ */
 void
 thread_sleep(int64_t wakeup_ticks)
 {
-  /* if
-    the current thread is not idle thread,
-    change the state of the caller thread to BLOCKED
-    store the local tick to wake up,
-    TODO: update the global tick if necessary,
-    and call schedule() */
-
   struct thread *cur = thread_current();
   enum intr_level old_level;
 
@@ -347,28 +349,35 @@ thread_sleep(int64_t wakeup_ticks)
   if (cur != idle_thread) {
     cur->wakeup_tick = wakeup_ticks;
     list_insert_ordered(&sleep_list, &cur->elem, (list_less_func *) &compare_thread_ticks, NULL);
+    if (wakeup_ticks < least_ticks_sleep_thread) {
+      least_ticks_sleep_thread = wakeup_ticks;
+    }
     thread_block();
   }
 
   intr_set_level (old_level);
 }
 
-/* Check sleep list
-  Find any threads to wake up and the global tick
-  move them to ready list if necessary
-  TODO: update the global tick */
+/*
+ * Check the sleep list for any threads that need to be woken up.
+ * If a thread's wake-up tick is less than or equal to the global tick,
+ * move the thread from the sleep list to the ready list.
+ * Update the global tick to the minimum wake-up tick of all threads on the sleep list.
+ */
 void
 thread_wakeup(int64_t ticks)
 {
   // loop through the sleep list
   struct list_elem *e;
   struct thread *t;
+  if(least_ticks_sleep_thread > ticks) {
+    return;
+  }
   for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)) {
     t = list_entry(e, struct thread, elem);
     if (ticks >= t->wakeup_tick) {
       // remove the thread from the sleep list
       list_remove(e);
-      
       // wake up the thread
       thread_unblock(t);
       break;
