@@ -328,7 +328,7 @@ bool
 compare_thread_ticks(const struct list_elem *a, const struct list_elem *b, void *aux){
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
-  return thread_a->wakeup_tick > thread_b->wakeup_tick;
+  return thread_a->wakeup_tick < thread_b->wakeup_tick;
 }
 
 /*
@@ -367,21 +367,29 @@ thread_sleep(int64_t wakeup_ticks)
 void
 thread_wakeup(int64_t ticks)
 {
-  // loop through the sleep list
   struct list_elem *e;
   struct thread *t;
-  if(least_ticks_sleep_thread > ticks) {
-    return;
-  }
-  for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)) {
+  
+  // No threads to wake if ticks is less than least ticks in sleep thread
+  if(least_ticks_sleep_thread > ticks) return;
+
+  while(!list_empty(&sleep_list)) {
+
+    e = list_begin(&sleep_list);
     t = list_entry(e, struct thread, elem);
-    if (ticks >= t->wakeup_tick) {
-      // remove the thread from the sleep list
-      list_remove(e);
-      // wake up the thread
-      thread_unblock(t);
+
+    // if not thread to wake up, 
+    // update the least_thread to wake and break, 
+    // as the list is ordered
+    if (ticks < t-> wakeup_tick) {
+      least_ticks_sleep_thread = t->wakeup_tick;
       break;
     }
+
+    // remove the thread from the sleep list
+    list_remove(e);
+    // wake up the thread
+    thread_unblock(t);
   }
 }
 
