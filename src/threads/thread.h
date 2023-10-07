@@ -129,7 +129,8 @@ void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
 void thread_sleep(int64_t ticks);
-void thread_wakeup(int64_t ticks);
+void wakeup_threads(int64_t ticks);
+void thread_wakeup(struct thread* t);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
