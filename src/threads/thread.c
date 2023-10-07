@@ -76,6 +76,8 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+static void update_least_ticks(int64_t ticks);
+static int64_t get_least_ticks(void);
 
 
 
@@ -349,13 +351,35 @@ thread_sleep(int64_t wakeup_ticks)
   if (cur != idle_thread) {
     cur->wakeup_tick = wakeup_ticks;
     list_insert_ordered(&sleep_list, &cur->elem, (list_less_func *) &compare_thread_ticks, NULL);
-    if (wakeup_ticks < least_ticks_sleep_thread) {
-      least_ticks_sleep_thread = wakeup_ticks;
-    }
+    update_least_ticks(wakeup_ticks);
     thread_block();
   }
 
   intr_set_level (old_level);
+}
+
+int64_t get_least_ticks(void) {
+  return least_ticks_sleep_thread;
+}
+
+void update_least_ticks(int64_t ticks) {
+  if (least_ticks_sleep_thread > ticks) {
+    least_ticks_sleep_thread = ticks;
+  }
+}
+
+/*
+* Adds the given thread to the sleep queue 
+* and wakes up the thread (sets status to READY)
+*/
+void thread_wakeup(struct thread* t) {
+  // remove the thread from the sleep list, disable interrupts to make the list removal atomic
+  enum intr_level old_level = intr_disable();
+  list_remove(&t->elem);
+  intr_set_level(old_level);
+  
+  // wake up the thread
+  thread_unblock(t);
 }
 
 /*
@@ -365,13 +389,13 @@ thread_sleep(int64_t wakeup_ticks)
  * Update the global tick to the minimum wake-up tick of all threads on the sleep list.
  */
 void
-thread_wakeup(int64_t ticks)
+wakeup_threads(int64_t ticks)
 {
   struct list_elem *e;
   struct thread *t;
   
   // No threads to wake if ticks is less than least ticks in sleep thread
-  if(least_ticks_sleep_thread > ticks) return;
+  if(get_least_ticks() > ticks) return;
 
   while(!list_empty(&sleep_list)) {
 
@@ -382,17 +406,11 @@ thread_wakeup(int64_t ticks)
     // update the least_thread to wake and break, 
     // as the list is ordered
     if (ticks < t-> wakeup_tick) {
-      least_ticks_sleep_thread = t->wakeup_tick;
+      update_least_ticks(t->wakeup_tick);
       break;
     }
 
-    // remove the thread from the sleep list, disable interrupts to make the list removal atomic
-    enum intr_level old_level = intr_disable();
-    list_remove(e);
-    intr_set_level(old_level);
-    
-    // wake up the thread
-    thread_unblock(t);
+    thread_wakeup(t);
   }
 }
 
