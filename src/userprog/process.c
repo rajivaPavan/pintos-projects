@@ -20,6 +20,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void stack_arguments(char* args, void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -42,7 +43,6 @@ process_execute (const char *file_name)
   char *save_ptr;
   char *file_name_token;
   file_name_token = strtok_r (file_name, " ", &save_ptr);
-
   /* Create a new thread to execute EXEC_NAME. */
   tid = thread_create (file_name_token, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
@@ -53,11 +53,16 @@ process_execute (const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *command_)
 {
-  char *file_name = file_name_;
+  char *command = command_;
   struct intr_frame if_;
   bool success;
+
+  // get the first token from command_ as the filename, the rest as arguments
+  char* file_name; char* save_ptr;
+  file_name = strtok_r(command, " ", &save_ptr);
+  char* parsed_arguments = save_ptr;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -65,14 +70,16 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+  /* Setup user stack with arguments from the command */
+  stack_arguments(parsed_arguments, &if_.esp);
+  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  palloc_free_page (command);
   if (!success) 
     thread_exit ();
 
-  /* Setup user stack with parameters */
-
+  /* TODO: Check if this is possibly the better place to stack the arguments */
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -96,6 +103,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(true); // FIXME: Provide better implementation
   return -1;
 }
 
@@ -450,6 +458,61 @@ setup_stack (void **esp)
         palloc_free_page (kpage);
     }
   return success;
+}
+
+static void
+stack_arguments(char* args, void **esp)
+{
+  char *token, *save_ptr;
+  char *argv[128];
+  int argc = 0;
+  int i;
+
+  // tokenize the command
+  for (token = strtok_r(args, " ", &save_ptr); token != NULL;
+       token = strtok_r(NULL, " ", &save_ptr))
+    {
+      argv[argc] = token;
+      argc++;
+    }
+
+  // push the arguments to the stack
+  for (i = argc - 1; i >= 0; i--)
+    {
+      *esp -= strlen(argv[i]) + 1;
+      memcpy(*esp, argv[i], strlen(argv[i]) + 1);
+    }
+
+  // word-align
+  while ((uint32_t) *esp % 4 != 0)
+    {
+      *esp -= 1;
+      memset(*esp, 0, 1);
+    }
+
+  // push the null sentinel
+  *esp -= 4;
+  memset(*esp, 0, 4);
+
+  // push the addresses of the arguments
+  for (i = argc - 1; i >= 0; i--)
+    {
+      *esp -= 4;
+      memcpy(*esp, &argv[i], 4);
+    }
+
+  // push argv
+  char *argv_addr = *esp;
+  *esp -= 4;
+  memcpy(*esp, &argv_addr, 4);
+
+  // push argc
+  *esp -= 4;
+  memcpy(*esp, &argc, 4);
+
+  // push the fake return address
+  *esp -= 4;
+  memset(*esp, 0, 4);  
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

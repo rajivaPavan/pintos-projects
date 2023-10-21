@@ -26,17 +26,39 @@ R. P. Pitiwaduge 210479L rajiva.21@cse.mrt.ac.lk
 
 ---- ALGORITHMS ----
 
->> A2: Briefly describe how you implemented argument parsing.  How do
->> you arrange for the elements of argv[] to be in the right order?
+> A2: Briefly describe how you implemented argument parsing.  
+
+When a new process is created using the `process_execute` function, the name of the thread to be created is extracted from the filename parameter. This is done by using the `strtok_r` function to tokenize the filename parameter and extract the first token, which represents the name of the executable file. The extracted name is then used as the name of the new thread that will be created to run the executable.
+
+Moving on to the `start_process` function; Technically, the parameter `file_name_` in `static void start_process (void *file_name_)` consists of the file name of the executable and arguements passed along with it. Therefore, it was renamed to `command_` which was a more suitable variable name.
+
+> How do you arrange for the elements of argv[] to be in the right order?
+
+The `stack_arguments` function is used to set up the user stack for a new process. It takes a string of arguments (`args`) and a pointer to the stack pointer (`esp`) as input.
+
+The function first tokenizes the `args` string using `strtok_r` and stores the tokens in an array called `argv`. It also counts the number of arguments in the `argc` variable.
+
+Next, the function pushes the arguments to the stack in reverse order. It does this by iterating over the `argv` array in reverse order and pushing each argument to the stack using `memcpy` function. It also word-aligns the stack pointer by adding padding bytes if necessary.
+
+After pushing the arguments to the stack, the function pushes a null sentinel to mark the end of the argument list. It then pushes the addresses of the arguments to the stack in reverse order.
+
+Finally, the function pushes the address of the `argv` array to the stack, followed by the value of `argc`. It also pushes a fake return address to the stack.
+
 >> How do you avoid overflowing the stack page?
+
+
 
 ---- RATIONALE ----
 
->> A3: Why does Pintos implement strtok_r() but not strtok()?
+> A3: Why does Pintos implement strtok_r() but not strtok()?
 
->> A4: In Pintos, the kernel separates commands into a executable name
->> and arguments.  In Unix-like systems, the shell does this
->> separation.  Identify at least two advantages of the Unix approach.
+Unlike `strtok`, `strtok_r` is thread safe.
+
+> A4: In Pintos, the kernel separates commands into a executable name
+and arguments.  In Unix-like systems, the shell does this
+separation.  Identify at least two advantages of the Unix approach.
+
+Memory used by the kernel to seperate the commands into executable name and arguments is saved, when this is handled by ther shell.
 
 			     SYSTEM CALLS
 			     ============
@@ -128,3 +150,5 @@ the quarter.
 >> students, either for future quarters or the remaining projects?
 
 >> Any other comments?
+
+---
