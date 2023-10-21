@@ -72,7 +72,7 @@ start_process (void *command_)
   success = load (file_name, &if_.eip, &if_.esp);
   /* Setup user stack with arguments from the command */
   stack_arguments(parsed_arguments, &if_.esp);
-  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
 
   /* If load failed, quit. */
   palloc_free_page (command);
