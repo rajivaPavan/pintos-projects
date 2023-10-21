@@ -38,8 +38,13 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  // only the first token should be given as the file name
+  char *save_ptr;
+  char *file_name_token;
+  file_name_token = strtok_r (file_name, " ", &save_ptr);
+
+  /* Create a new thread to execute EXEC_NAME. */
+  tid = thread_create (file_name_token, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -65,6 +70,9 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
+
+  /* Setup user stack with parameters */
+
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
