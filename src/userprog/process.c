@@ -59,10 +59,15 @@ start_process (void *command_)
   struct intr_frame if_;
   bool success;
 
+  char* args;
+  args = palloc_get_page(0);
+  if (args == NULL)
+    return TID_ERROR;
+  strlcpy(args, command, PGSIZE);
+
   // get the first token from command_ as the filename, the rest as arguments
   char* file_name; char* save_ptr;
   file_name = strtok_r(command, " ", &save_ptr);
-  char* parsed_arguments = save_ptr;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -70,17 +75,17 @@ start_process (void *command_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-  /* Setup user stack with arguments from the command */
-  if(parsed_arguments != NULL)
-    stack_arguments(parsed_arguments, &if_.esp);
-  // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
-
+  
   /* If load failed, quit. */
   palloc_free_page (command);
-  if (!success) 
+  if (!success) {
     thread_exit ();
+  }
 
-  /* TODO: Check if this is possibly the better place to stack the arguments */
+  /* Setup user stack with arguments from the command */  
+  stack_arguments(args, &if_.esp);
+
+  // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -461,50 +466,91 @@ setup_stack (void **esp)
   return success;
 }
 
+#define DEFAULT_ARG_SIZE 3
+
 static void
 stack_arguments(char* args, void **esp)
 {
+  char *_cmd_args;
   char *token, *save_ptr;
-  char *argv[128];
-  int argc = 0;
-  int i;
+  int arg_count = 0;
+  int byte_size = 0;
+  char **cmd_args_arr;
+  char **cmd_arg_addr_arr;
 
-  // tokenize the command
-  for (token = strtok_r(args, " ", &save_ptr); token != NULL;
-       token = strtok_r(NULL, " ", &save_ptr))
+  // keep an array to save the separated args into
+  cmd_args_arr = malloc(DEFAULT_ARG_SIZE * sizeof(char *));
+  for (
+      token = strtok_r(args, " ", &save_ptr);
+      token != NULL;
+      token = strtok_r(NULL, " ", &save_ptr))
+  {
+    arg_count += 1;
+    if (arg_count > DEFAULT_ARG_SIZE)
     {
-      argv[argc] = token;
-      argc++;
+      cmd_args_arr = realloc(cmd_args_arr, arg_count * sizeof(char *));
     }
+    cmd_args_arr[arg_count - 1] = token;
+  }
 
-  // word-align
-  *esp = (void*)((uint32_t)*esp & ~3);
+  // save args to stack. also keep the pointers to each arg in an array
+  int arg_len;
+  cmd_arg_addr_arr = malloc(arg_count * sizeof(char *));
+  for (int i = arg_count; i > 0; i--)
+  {
+    arg_len = strlen(cmd_args_arr[i - 1]) + 1; // add 1 for the \0 at the end
+    byte_size += arg_len;
+    *esp -= arg_len;
+    cmd_arg_addr_arr[i - 1] = *esp;
+    memcpy(*esp, cmd_args_arr[i - 1], arg_len);
+  }
 
-  // push the arguments to the stack
-  for (i = argc - 1; i >= 0; i--)
-    {
-      *esp -= strlen(argv[i]) + 1;
-      memcpy(*esp, argv[i], strlen(argv[i]) + 1);
-    }
+  // printf("stack pointer before word align at %p\n", *esp);
+  // word align
+  int word_align = byte_size % 4;
+  if (word_align != 0)
+  {
+    word_align = 4 - word_align;
+    *esp -= word_align;
+    memset(*esp, 0, word_align);
+  }
+  // printf("stack pointer after word align at %p\n", *esp);
 
-  // push the addresses of the arguments
-  uint32_t *arg_addrs = (uint32_t*)*esp;
-  for (i = 0; i < argc; i++)
-    {
-      arg_addrs[i] = (uint32_t)(*esp) + (i + 1) * 4;
-    }
+  // null pointer
+  *esp -= sizeof(char *);
+  byte_size += sizeof(char *);
+  // printf("null pointer at %p\n", *esp);
+  *(char *)*esp = 0;
 
-  // push argv
-  *esp -= 4;
-  memcpy(*esp, &arg_addrs, 4);
+  // save pointers to each arg on the stack
+  for (int i = arg_count; i > 0; i--)
+  {
+    *esp -= sizeof(char *);
+    byte_size += sizeof(char *);
+    // printf("arg %d addr %p at %p\n", i-1, cmd_arg_addr_arr[i-1], *esp);
+    *(int *)*esp = (unsigned)cmd_arg_addr_arr[i - 1];
+  }
 
-  // push argc
-  *esp -= 4;
-  memcpy(*esp, &argc, 4);
+  // save address of pointer to array of pointers to args
+  void *temp = *esp;
+  *esp -= sizeof(char **);
+  byte_size += sizeof(char **);
+  // printf("arg pointers arr addr at %p\n", *esp);
+  memcpy(*esp, &temp, sizeof(char **));
 
-  // push the fake return address
-  *esp -= 4;
-  memset(*esp, 0, 4);  
+  // save number of arguments to stack
+  *esp -= sizeof(int);
+  byte_size += sizeof(int);
+  // printf("arg count at %p\n", *esp);
+  memcpy(*esp, &arg_count, 1);
+
+  // finally save a fake return address
+  *esp -= sizeof(void *);
+  byte_size += sizeof(void *);
+
+  // free allocated memory
+  free(cmd_arg_addr_arr);
+  free(cmd_args_arr);
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
