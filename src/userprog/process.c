@@ -71,7 +71,8 @@ start_process (void *command_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
   /* Setup user stack with arguments from the command */
-  stack_arguments(parsed_arguments, &if_.esp);
+  if(parsed_arguments != NULL)
+    stack_arguments(parsed_arguments, &if_.esp);
   // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
 
   /* If load failed, quit. */
@@ -476,6 +477,9 @@ stack_arguments(char* args, void **esp)
       argc++;
     }
 
+  // word-align
+  *esp = (void*)((uint32_t)*esp & ~3);
+
   // push the arguments to the stack
   for (i = argc - 1; i >= 0; i--)
     {
@@ -483,28 +487,16 @@ stack_arguments(char* args, void **esp)
       memcpy(*esp, argv[i], strlen(argv[i]) + 1);
     }
 
-  // word-align
-  while ((uint32_t) *esp % 4 != 0)
-    {
-      *esp -= 1;
-      memset(*esp, 0, 1);
-    }
-
-  // push the null sentinel
-  *esp -= 4;
-  memset(*esp, 0, 4);
-
   // push the addresses of the arguments
-  for (i = argc - 1; i >= 0; i--)
+  uint32_t *arg_addrs = (uint32_t*)*esp;
+  for (i = 0; i < argc; i++)
     {
-      *esp -= 4;
-      memcpy(*esp, &argv[i], 4);
+      arg_addrs[i] = (uint32_t)(*esp) + (i + 1) * 4;
     }
 
   // push argv
-  char *argv_addr = *esp;
   *esp -= 4;
-  memcpy(*esp, &argv_addr, 4);
+  memcpy(*esp, &arg_addrs, 4);
 
   // push argc
   *esp -= 4;
