@@ -9,6 +9,7 @@
 #include "threads/vaddr.h"
 #include "devices/shutdown.h"
 #include "userprog/process.h"
+#include "filesys/file.h"
 
 static void syscall_handler (struct intr_frame *);
 static bool validate_user_ptr (const void *ptr);
@@ -20,6 +21,7 @@ static int *get_nth_ptr(const void *ptr, int n);
 void
 syscall_init (void) 
 {
+  lock_init(&file_system_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -94,11 +96,15 @@ int wait(pid_t pid)
 int 
 write (int fd, const void *buffer, unsigned length)
 {
+  int written_size = 0;
   if(fd == STDOUT){
     putbuf(buffer, length);
-    return length;
+    written_size = length;
   }
-  return 0;
+  else{
+    // TODO: write to file
+  }
+  return written_size;
 };
 
 
