@@ -124,8 +124,39 @@ start_process (void *command)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while(true); // FIXME: Provide better implementation
-  return -1;
+  struct thread *current_thread;
+  struct thread *child_thread;
+
+  current_thread = thread_current();
+
+  // Check if child_tid is in current threads children.
+  struct list_elem *child_elem;
+  for 
+  (
+    child_elem = list_begin(&current_thread->child_list); 
+    child_elem != list_end(&current_thread->child_list);
+    child_elem = list_next(child_elem)
+  )
+  {
+    child_thread = list_entry(child_elem, struct thread, child_elem);
+    if (child_thread->tid == child_tid) { break; }
+  }
+
+  // If child with child_tid was not in list, its not a child of the calling process
+  if (child_elem == list_end(&current_thread->child_list)) 
+    return -1; 
+
+  intr_disable();
+  list_remove(child_elem);
+  intr_enable();
+  
+  // Wait for child thread to exit
+  sema_down(&child_thread->pre_exit_sema);
+  int exit_status = child_thread->exit_status;
+  // childs exit status was obtained, can safely exit now
+  sema_up(&child_thread->post_exit_sema);
+
+  return exit_status;
 }
 
 /* Free the current process's resources. */
@@ -134,6 +165,12 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  // Wait for child to get exit status
+  sema_up(&cur->pre_exit_sema);
+
+  // Notify parent that exit status has been obtained
+  sema_down(&cur->post_exit_sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

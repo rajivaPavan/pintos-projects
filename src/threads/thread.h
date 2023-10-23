@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -92,6 +93,12 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+
+    struct list child_list;             /* List of child threads */
+    struct list_elem child_elem;        /* List element for child threads list */
+    int exit_status;                    /* For parent process that wait for this. This is set when exit system call is made */
+    struct semaphore pre_exit_sema;     /* Semaphore for parent process to wait for child to begin exiting and set its exit_status */
+    struct semaphore post_exit_sema;    /* Semaphore for child to wait for parent to get exit status */
 
     int64_t wakeup_tick;                /* Tick till wake up */
 

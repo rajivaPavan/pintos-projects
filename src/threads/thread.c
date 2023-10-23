@@ -212,6 +212,11 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  list_push_back(&thread_current()->child_list, &t->child_elem);
+  // initialize the semaphores for parent and child
+  sema_init(&t->pre_exit_sema, 0);
+  sema_init(&t->post_exit_sema, 0);
+
   return tid;
 }
 
@@ -563,6 +568,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->exit_status = -1;
+
+  // Initialize list for child processes
+  list_init(&t->child_list);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

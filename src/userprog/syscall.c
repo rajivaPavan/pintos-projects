@@ -73,6 +73,7 @@ void halt(void)
 void exit(int status)
 {
   struct thread *t = thread_current();
+  t->exit_status = status; // set exit status for parent to retrieve
   printf("%s: exit(%d)\n", t->name, status);
   thread_exit();
 }
@@ -83,14 +84,42 @@ void exit(int status)
  * returns the new process's program id (pid) */
 pid_t exec(const char *cmd_line)
 {
-  // TODO: implement
+  struct thread *curr_t = thread_current();
+  struct thread *child_t;
+  struct list_elem *child_elem;
+
+  // execute cmd_args and make a child process
+  // printf("## from %s sys exec %s \n", thread_current()->name, cmd_args);
+  tid_t child_tid = process_execute(cmd_line);
+  if (child_tid == TID_ERROR)
+  {
+    return child_tid;
+  }
+
+  // Check if child_tid is in current threads children.
+  for (
+      child_elem = list_begin(&curr_t->child_list);
+      child_elem != list_end(&curr_t->child_list);
+      child_elem = list_next(child_elem))
+  {
+    child_t = list_entry(child_elem, struct thread, child_elem);
+    if (child_t->tid == child_tid)
+    {
+      break;
+    }
+  }
+  // If child with child_tid was not in list, its not a child of the calling process
+  if (child_elem == list_end(&curr_t->child_list))
+    return EXIT_FAILURE;
+
+  return child_tid;
 }
 
 /* Waits for a child process pid and 
  * retrieves the child's exit status */
 int wait(pid_t pid)
 {
-  // TODO: implement
+  return process_wait(pid);
 }
 
 int 
