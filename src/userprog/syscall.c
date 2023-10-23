@@ -63,12 +63,53 @@ syscall_handler (struct intr_frame *f UNUSED)
         exit(EXIT_FAILURE);
       break;
     }
+    case SYS_OPEN:
+    {
+      int fd = open(*(char *)get_offset_ptr(f->esp, 1));
+      if(fd == EXIT_FAILURE)
+        exit(EXIT_FAILURE);
+      f->eax = fd;
+      break;
+    }
+    case SYS_FILESIZE:
+    {
+      int fd = *(int *)get_offset_ptr(f->esp, 1);
+      f->eax = filesize(fd);
+      break;
+    }
+    case SYS_READ:
+    {
+      int fd = *(int *)get_offset_ptr(f->esp, 1);
+      void *buffer = *(int *)get_offset_ptr(f->esp, 2);
+      unsigned length = *(int *)get_offset_ptr(f->esp, 3);
+      f->eax = read(fd, buffer, length);
+      break;
+    }
     case SYS_WRITE:
     {
       int fd = *(int *)get_offset_ptr(f->esp, 1);
       const void *buffer = *(int *)get_offset_ptr(f->esp, 2);
       unsigned length = *(int *)get_offset_ptr(f->esp, 3);
       f->eax = write(fd, buffer, length);
+      break;
+    }
+    case SYS_SEEK:
+    {
+      int fd = *(int *)get_offset_ptr(f->esp, 1);
+      unsigned position = *(int *)get_offset_ptr(f->esp, 2);
+      seek(fd, position);
+      break;
+    }
+    case SYS_TELL:
+    {
+      int fd = *(int *)get_offset_ptr(f->esp, 1);
+      f->eax = tell(fd);
+      break;
+    }
+    case SYS_CLOSE:
+    {
+      int fd = *(int *)get_offset_ptr(f->esp, 1);
+      close(fd);
       break;
     }
     default:
@@ -160,6 +201,65 @@ bool remove (const char *file){
   return success;
 }
 
+/* Opens the file called file. 
+* Returns a nonnegative integer handle called a "file descriptor" (fd), 
+* or -1 if the file could not be opened. */
+int open (const char *file){
+
+  lock_acquire(&file_system_lock);
+  struct file *f = filesys_open(file);
+  lock_release(&file_system_lock);
+
+  if(f == NULL)
+    return EXIT_FAILURE;
+  
+  // add file to fd_table
+  struct thread *curr_t = thread_current();
+  curr_t->fd_table[curr_t->next_fd] = f;
+  curr_t->next_fd++;
+  return curr_t->next_fd - 1;
+}
+
+/* Returns the size, in bytes, of the file open as fd.*/
+int filesize (int fd){
+  struct thread *curr_t = thread_current();
+  struct file *f = curr_t->fd_table[fd];
+  if(f == NULL)
+    return EXIT_FAILURE;
+  return file_length(f);
+}
+
+
+/* Reads size bytes from the file open as fd into buffer. 
+Returns the number of bytes actually read (0 at end of file), 
+or -1 if the file could not be read (due to a condition other than end of file). 
+Fd 0 reads from the keyboard using input_getc(). */
+int read (int fd, void *buffer, unsigned size)
+{
+  int read_size = 0;
+  if(fd == STDIN){
+    uint8_t *buf = (uint8_t *)buffer;
+    for(unsigned i = 0; i < size; i++){
+      buf[i] = input_getc();
+    }
+    read_size = size;
+  }
+  else if(fd == STDOUT){
+    exit(EXIT_FAILURE);
+    return 0;
+  }
+  else{
+    struct thread *curr_t = thread_current();
+    struct file *f = curr_t->fd_table[fd];
+    if(f == NULL)
+      return EXIT_FAILURE;
+    lock_acquire(&file_system_lock);
+    read_size = file_read(f, buffer, size);
+    lock_release(&file_system_lock);
+  }
+  return read_size;
+}
+
 int 
 write (int fd, const void *buffer, unsigned length)
 {
@@ -168,12 +268,61 @@ write (int fd, const void *buffer, unsigned length)
     putbuf(buffer, length);
     written_size = length;
   }
+  else if(fd == STDIN){
+    exit(EXIT_FAILURE);
+    return 0;
+  }
   else{
-    // TODO: write to file
+    struct thread *curr_t = thread_current();
+    struct file *f = curr_t->fd_table[fd];
+    if(f == NULL)
+      return EXIT_FAILURE;
+    written_size = file_write(f, buffer, length);
   }
   return written_size;
 };
 
+/*
+ * Changes the next byte to be read or written in open file fd to 
+ * position, expressed in bytes from the beginning of the file. 
+ * (Thus, a position of 0 is the file's start.) */
+void seek (int fd, unsigned position)
+{
+  struct thread *curr_t = thread_current();
+  struct file *f = curr_t->fd_table[fd];
+  if(f == NULL)
+    return EXIT_FAILURE;
+  lock_acquire(&file_system_lock);
+  file_seek(f, position);
+  lock_release(&file_system_lock);
+}
+
+// Returns the position of the next byte to be read or written in open file fd, expressed in bytes from the beginning of the file.
+unsigned tell (int fd)
+{
+  struct thread *curr_t = thread_current();
+  struct file *f = curr_t->fd_table[fd];
+  if(f == NULL)
+    return EXIT_FAILURE;
+  lock_acquire(&file_system_lock);
+  off_t offset = file_tell(f);
+  lock_release(&file_system_lock);
+  return offset;
+}
+/* Closes file descriptor fd. 
+ * Exiting or terminating a process implicitly closes all 
+ * its open file descriptors, as if by calling this function for each one.
+ */
+void close (int fd)
+{
+  struct thread *curr_t = thread_current();
+  struct file *f = curr_t->fd_table[fd];
+  if(f == NULL)
+    return EXIT_FAILURE;
+  lock_acquire(&file_system_lock);
+  file_close(f);
+  lock_release(&file_system_lock);
+}
 
 /*
 * Checks if the pointer is a valid user pointer

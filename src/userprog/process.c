@@ -166,6 +166,16 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  // Close all files
+  for (int i = 0; i < cur->next_fd; i++)
+  {
+    if (cur->fd_table[i] != NULL)
+      file_close(cur->fd_table[i]);
+  }
+  // Dealloc memory of fd_table
+  free(cur->fd_table);
+  
+
   // Wait for child to get exit status
   sema_up(&cur->pre_exit_sema);
 

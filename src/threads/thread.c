@@ -217,6 +217,11 @@ thread_create (const char *name, int priority,
   sema_init(&t->pre_exit_sema, 0);
   sema_init(&t->post_exit_sema, 0);
 
+  /* Allocate file descriptor table */
+  t -> fd_table = malloc(sizeof(struct file *) * 64);
+  // reserve 0 and 1 for stdin and stdout
+  t -> next_fd = 2;
+
   return tid;
 }
 
