@@ -14,6 +14,8 @@
 
 static void syscall_handler (struct intr_frame *);
 static bool validate_user_ptr (const void *ptr);
+static bool validate_user_buffer(const void *buffer, unsigned size);
+static bool validate_user_string(const char *str);
 static void *get_offset_ptr(void *ptr, int n);
 
 #define STDOUT STDOUT_FILENO
@@ -30,7 +32,10 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   // validate the stack pointer
-  validate_user_ptr(f->esp);
+  if(!validate_user_ptr(f->esp)){
+    exit(EXIT_ERROR);
+    return;
+  }
 
   // retrieve the system call number
   int syscall_num = *(int *)f->esp;
@@ -41,19 +46,31 @@ syscall_handler (struct intr_frame *f UNUSED)
       halt();
       break;
     case SYS_EXIT:
-      exit(*(int *)get_offset_ptr(f->esp, 1));
+    {
+      int *status = (int *)get_offset_ptr(f->esp, 1);
+      if(!validate_user_ptr(status))
+        *status = EXIT_ERROR;
+      exit(*status);
       break;
+    }
     case SYS_EXEC:
-      f->eax = exec(*(int *)get_offset_ptr(f->esp, 1));
+    {
+      char* cmd_line = (char *)get_offset_ptr(f->esp, 1);
+      // if cmd_line is null pointer or empty string, exit
+      if(!validate_user_string(cmd_line)){
+        exit(EXIT_ERROR);
+        break;
+      }
+      f->eax = exec(cmd_line);
       break;
+    }
     case SYS_WAIT:
       wait(*(int *)get_offset_ptr(f->esp, 1));
       break;
     case SYS_CREATE:
     {
       char* file = (char *)get_offset_ptr(f->esp, 1);
-      // if file name is null pointer or empty string, exit
-      if(*file == '\0' || validate_user_ptr(file) == false){
+      if(!validate_user_string(file)){
         exit(EXIT_ERROR);
         break;
       }
@@ -72,9 +89,17 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_OPEN:
     {
-      int fd = open(*(char *)get_offset_ptr(f->esp, 1));
-      if(fd == EXIT_ERROR)
+      char* file = (char *)get_offset_ptr(f->esp, 1);
+      // if file name is null pointer or empty string, exit
+      if(!validate_user_string(file)){
+        exit(EXIT_SUCCESS);
+        break;
+      }
+      int fd = open(file);
+      if(fd == EXIT_ERROR){
         exit(EXIT_ERROR);
+        break;
+      }
       f->eax = fd;
       break;
     }
@@ -331,25 +356,50 @@ void close (int fd)
 }
 
 /*
-* Checks if the pointer is a valid user pointer
-* User pointer is valid if it is not null pointer, 
-* a pointer to kernel virtual address space (above PHYS_BASE)
-* or a pointer to unmapped virtual memory, 
-*/
-static bool
-validate_user_ptr (const void *ptr)
+ * Checks if the pointer is a valid user pointer
+ * User pointer is valid if it is not null pointer, 
+ * a pointer to kernel virtual address space (above PHYS_BASE)
+ * or a pointer to unmapped virtual memory, 
+ */
+static 
+bool validate_user_ptr(const void *ptr)
 {
-  if(ptr == NULL)
-    exit(EXIT_ERROR);
+  if (ptr == NULL) {
+    return false;
+  }
 
-  if(is_kernel_vaddr(ptr))
-    exit(EXIT_ERROR);
-  
-  struct thread *curr_t;
-  curr_t = thread_current();
-  if(!pagedir_get_page(curr_t->pagedir, ptr))
-    exit(EXIT_ERROR);
+  if (is_kernel_vaddr(ptr)) {
+    return false;
+  }
 
+  struct thread *curr_t = thread_current();
+  if (pagedir_get_page(curr_t->pagedir, ptr) == NULL) {
+    return false;
+  }
+
+  return true;
+}
+
+static 
+bool validate_user_buffer(const void *buffer, unsigned size)
+{
+  for(unsigned i = 0; i < size; i++){
+    if(!validate_user_ptr(buffer + i))
+      return false;
+  }
+  return true;
+}
+
+static 
+bool validate_user_string(const char *str)
+{
+  if(!validate_user_ptr(str) || *str == '\0')
+    return false;
+  while(*str != '\0'){
+    str++;
+    if(!validate_user_ptr(str))
+      return false;
+  }
   return true;
 }
 
@@ -357,8 +407,5 @@ static
 void *get_offset_ptr(void *ptr, int n)
 {
   void *next_ptr = ptr + 4*n;
-  validate_user_ptr((void *)next_ptr);
-  // Validate case in which part of the value is in valid address space
-  validate_user_ptr((void *)(next_ptr + 4));
   return next_ptr;
 }
