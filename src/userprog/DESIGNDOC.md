@@ -34,19 +34,23 @@ Moving on to the `start_process` function; Technically, the parameter `file_name
 
 > How do you arrange for the elements of argv[] to be in the right order?
 
-The `stack_arguments` function is used to set up the user stack for a new process. It takes a string of arguments (`args`) and a pointer to the stack pointer (`esp`) as input.
+The function written to handle stacking arguments: `stack_arguments()` function takes an array of strings `args`, the number of arguments `argc`, and a pointer to the stack pointer `esp`.
 
-The function first tokenizes the `args` string using `strtok_r` and stores the tokens in an array called `argv`. It also counts the number of arguments in the `argc` variable.
+The function first calculates the total size of the arguments by iterating over the `args` array and adding the length of each argument plus one for the null terminator. It then allocates an array of pointers `arg_ptr` to store the address of each argument on the stack.
 
-Next, the function pushes the arguments to the stack in reverse order. It does this by iterating over the `argv` array in reverse order and pushing each argument to the stack using `memcpy` function. It also word-aligns the stack pointer by adding padding bytes if necessary.
+The function then iterates over the args array in reverse order and saves each argument on the stack using `memcpy()`. It also saves the address of each argument on the stack in the `arg_ptr` array.
 
-After pushing the arguments to the stack, the function pushes a null sentinel to mark the end of the argument list. It then pushes the addresses of the arguments to the stack in reverse order.
+After saving the arguments on the stack, the function aligns the stack pointer to a multiple of 4 bytes by adding padding if necessary. It then adds a null pointer to the stack to mark the end of the argument list.
 
-Finally, the function pushes the address of the `argv` array to the stack, followed by the value of `argc`. It also pushes a fake return address to the stack.
+The function then iterates over the 	 array in reverse order and saves the address of each argument on the stack using `*(int *)*esp = (unsigned)arg_ptr[i - 1]`.
+
+The function then saves the address of the pointer to the array of pointers to arguments on the stack using `memcpy()`. It also saves the number of arguments on the stack using `memcpy()`.
+
+Finally, the function saves a fake return address on the stack and frees the memory allocated for the `arg_ptr` array.
 
 >> How do you avoid overflowing the stack page?
 
-
+Not handled
 
 ---- RATIONALE ----
 
@@ -58,7 +62,7 @@ Unlike `strtok`, `strtok_r` is thread safe.
 and arguments.  In Unix-like systems, the shell does this
 separation.  Identify at least two advantages of the Unix approach.
 
-Memory used by the kernel to seperate the commands into executable name and arguments is saved, when this is handled by ther shell.
+Memory used by the kernel to seperate the commands into executable name and arguments is saved, when this is handled by the shell.
 
 			     SYSTEM CALLS
 			     ============
