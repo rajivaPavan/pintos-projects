@@ -51,23 +51,30 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     case SYS_CREATE:
     {
-      bool success = create(*(char *)get_offset_ptr(f->esp, 1), *(unsigned *)get_offset_ptr(f->esp, 2));
+      char* file = (char *)get_offset_ptr(f->esp, 1);
+      // if file name is null pointer or empty string, exit
+      if(*file == '\0' || validate_user_ptr(file) == false){
+        exit(EXIT_ERROR);
+        break;
+      }
+      unsigned initial_size = *(unsigned *)get_offset_ptr(f->esp, 2);
+      bool success = create(file, initial_size);
       if(!success)
-        exit(EXIT_FAILURE);
+        exit(EXIT_ERROR);
       break;
     }
     case SYS_REMOVE:
     {
       bool success = remove(*(char *)get_offset_ptr(f->esp, 1));
       if(!success)
-        exit(EXIT_FAILURE);
+        exit(EXIT_ERROR);
       break;
     }
     case SYS_OPEN:
     {
       int fd = open(*(char *)get_offset_ptr(f->esp, 1));
-      if(fd == EXIT_FAILURE)
-        exit(EXIT_FAILURE);
+      if(fd == EXIT_ERROR)
+        exit(EXIT_ERROR);
       f->eax = fd;
       break;
     }
@@ -165,7 +172,7 @@ pid_t exec(const char *cmd_line)
   }
   // If child with child_tid was not in list, its not a child of the calling process
   if (child_elem == list_end(&curr_t->child_list))
-    return EXIT_FAILURE;
+    return EXIT_ERROR;
 
   return child_tid;
 }
@@ -209,9 +216,8 @@ int open (const char *file){
   lock_acquire(&file_system_lock);
   struct file *f = filesys_open(file);
   lock_release(&file_system_lock);
-
   if(f == NULL)
-    return EXIT_FAILURE;
+    return EXIT_ERROR;
   
   // add file to fd_table
   struct thread *curr_t = thread_current();
@@ -225,7 +231,7 @@ int filesize (int fd){
   struct thread *curr_t = thread_current();
   struct file *f = curr_t->fd_table[fd];
   if(f == NULL)
-    return EXIT_FAILURE;
+    return EXIT_ERROR;
   return file_length(f);
 }
 
@@ -245,14 +251,14 @@ int read (int fd, void *buffer, unsigned size)
     read_size = size;
   }
   else if(fd == STDOUT){
-    exit(EXIT_FAILURE);
+    exit(EXIT_ERROR);
     return 0;
   }
   else{
     struct thread *curr_t = thread_current();
     struct file *f = curr_t->fd_table[fd];
     if(f == NULL)
-      return EXIT_FAILURE;
+      return EXIT_ERROR;
     lock_acquire(&file_system_lock);
     read_size = file_read(f, buffer, size);
     lock_release(&file_system_lock);
@@ -269,14 +275,14 @@ write (int fd, const void *buffer, unsigned length)
     written_size = length;
   }
   else if(fd == STDIN){
-    exit(EXIT_FAILURE);
+    exit(EXIT_ERROR);
     return 0;
   }
   else{
     struct thread *curr_t = thread_current();
     struct file *f = curr_t->fd_table[fd];
     if(f == NULL)
-      return EXIT_FAILURE;
+      return EXIT_ERROR;
     written_size = file_write(f, buffer, length);
   }
   return written_size;
@@ -291,7 +297,7 @@ void seek (int fd, unsigned position)
   struct thread *curr_t = thread_current();
   struct file *f = curr_t->fd_table[fd];
   if(f == NULL)
-    return EXIT_FAILURE;
+    return EXIT_ERROR;
   lock_acquire(&file_system_lock);
   file_seek(f, position);
   lock_release(&file_system_lock);
@@ -303,7 +309,7 @@ unsigned tell (int fd)
   struct thread *curr_t = thread_current();
   struct file *f = curr_t->fd_table[fd];
   if(f == NULL)
-    return EXIT_FAILURE;
+    return EXIT_ERROR;
   lock_acquire(&file_system_lock);
   off_t offset = file_tell(f);
   lock_release(&file_system_lock);
@@ -318,7 +324,7 @@ void close (int fd)
   struct thread *curr_t = thread_current();
   struct file *f = curr_t->fd_table[fd];
   if(f == NULL)
-    return EXIT_FAILURE;
+    return EXIT_ERROR;
   lock_acquire(&file_system_lock);
   file_close(f);
   lock_release(&file_system_lock);
@@ -334,15 +340,15 @@ static bool
 validate_user_ptr (const void *ptr)
 {
   if(ptr == NULL)
-    exit(EXIT_FAILURE);
+    exit(EXIT_ERROR);
 
   if(is_kernel_vaddr(ptr))
-    exit(EXIT_FAILURE);
+    exit(EXIT_ERROR);
   
   struct thread *curr_t;
   curr_t = thread_current();
   if(!pagedir_get_page(curr_t->pagedir, ptr))
-    exit(EXIT_FAILURE);
+    exit(EXIT_ERROR);
 
   return true;
 }
