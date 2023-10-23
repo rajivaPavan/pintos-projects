@@ -10,10 +10,11 @@
 #include "devices/shutdown.h"
 #include "userprog/process.h"
 #include "filesys/file.h"
+#include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
 static bool validate_user_ptr (const void *ptr);
-static int *get_nth_ptr(const void *ptr, int n);
+static void *get_offset_ptr(void *ptr, int n);
 
 #define STDOUT STDOUT_FILENO
 #define STDIN STDIN_FILENO
@@ -40,20 +41,33 @@ syscall_handler (struct intr_frame *f UNUSED)
       halt();
       break;
     case SYS_EXIT:
-      exit(*(int *)(f->esp + 4));
+      exit(*(int *)get_offset_ptr(f->esp, 1));
       break;
     case SYS_EXEC:
-      // TODO: implement
+      f->eax = exec(*(int *)get_offset_ptr(f->esp, 1));
       break;
     case SYS_WAIT:
-      // TODO: implement
+      wait(*(int *)get_offset_ptr(f->esp, 1));
       break;
+    case SYS_CREATE:
+    {
+      bool success = create(*(char *)get_offset_ptr(f->esp, 1), *(unsigned *)get_offset_ptr(f->esp, 2));
+      if(!success)
+        exit(EXIT_FAILURE);
+      break;
+    }
+    case SYS_REMOVE:
+    {
+      bool success = remove(*(char *)get_offset_ptr(f->esp, 1));
+      if(!success)
+        exit(EXIT_FAILURE);
+      break;
+    }
     case SYS_WRITE:
     {
-      // TODO: validate the arguments
-      int fd = *(int *)(f->esp + 4);
-      const void *buffer = *(int *)(f->esp + 8);
-      unsigned length = *(int *)(f->esp + 12);
+      int fd = *(int *)get_offset_ptr(f->esp, 1);
+      const void *buffer = *(int *)get_offset_ptr(f->esp, 2);
+      unsigned length = *(int *)get_offset_ptr(f->esp, 3);
       f->eax = write(fd, buffer, length);
       break;
     }
@@ -122,6 +136,30 @@ int wait(pid_t pid)
   return process_wait(pid);
 }
 
+/* 
+ * Creates a new file called file initially initial_size bytes in size. 
+ * Returns true if successful, false otherwise. 
+ * */
+bool create(const char *file, unsigned initial_size)
+{
+  lock_acquire(&file_system_lock);
+  bool success = filesys_create(file, initial_size);
+  lock_release(&file_system_lock);
+  return success;
+}
+
+/* 
+* Deletes the file called file. 
+* Returns true if successful, false otherwise. 
+* A file may be removed regardless of whether it is open or closed, and removing an open file does not close it.
+*/
+bool remove (const char *file){
+  lock_acquire(&file_system_lock);
+  bool success = filesys_remove(file);
+  lock_release(&file_system_lock);
+  return success;
+}
+
 int 
 write (int fd, const void *buffer, unsigned length)
 {
@@ -161,11 +199,11 @@ validate_user_ptr (const void *ptr)
 }
 
 static
-int *get_nth_ptr(const void *ptr, int n)
+void *get_offset_ptr(void *ptr, int n)
 {
-  int *next_ptr = (int *)ptr + 4*n;
+  void *next_ptr = ptr + 4*n;
   validate_user_ptr((void *)next_ptr);
-  // Catch the edge case where just a part of the value is in valid address space
+  // Validate case in which part of the value is in valid address space
   validate_user_ptr((void *)(next_ptr + 4));
   return next_ptr;
 }
