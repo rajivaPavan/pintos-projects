@@ -101,9 +101,10 @@ struct thread
     struct semaphore pre_exit_sema;     /* Semaphore for parent process to wait for child to begin exiting and set its exit_status */
     struct semaphore post_exit_sema;    /* Semaphore for child to wait for parent to get exit status */
 
-   /* Used for file system */
-   struct file **fd_table;              /* File descriptor table */
-   int next_fd;                         /* Next available file descriptor */
+    /* Used for file system */
+    struct file **fd_table;             /* File descriptor table */
+    int next_fd;                        /* Next available file descriptor */
+    struct file *running_file;          /* Running file of process */
 
     int64_t wakeup_tick;                /* Tick till wake up */
 

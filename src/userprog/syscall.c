@@ -8,6 +8,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 #include "userprog/process.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -69,12 +70,12 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     case SYS_CREATE:
     {
-      char* file = (char *)get_offset_ptr(f->esp, 1);
+      char* file = *(char **)get_offset_ptr(f->esp, 1);
       if(!validate_user_string(file)){
         exit(EXIT_ERROR);
         break;
       }
-      unsigned initial_size = *(unsigned *)get_offset_ptr(f->esp, 2);
+      unsigned int initial_size = *(unsigned int *)get_offset_ptr(f->esp, 2);
       bool success = create(file, initial_size);
       if(!success)
         exit(EXIT_ERROR);
@@ -82,17 +83,22 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_REMOVE:
     {
-      bool success = remove(*(char *)get_offset_ptr(f->esp, 1));
+      const char* file = *(char **)get_offset_ptr(f->esp, 1);
+      if(!validate_user_string(file)){
+        exit(EXIT_ERROR);
+        break;
+      }
+      bool success = remove(file);
       if(!success)
         exit(EXIT_ERROR);
       break;
     }
     case SYS_OPEN:
     {
-      char* file = (char *)get_offset_ptr(f->esp, 1);
+      char* file = *(char **)get_offset_ptr(f->esp, 1);
       // if file name is null pointer or empty string, exit
       if(!validate_user_string(file)){
-        exit(EXIT_SUCCESS);
+        exit(EXIT_ERROR);
         break;
       }
       int fd = open(file);
@@ -105,24 +111,28 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_FILESIZE:
     {
-      int fd = *(int *)get_offset_ptr(f->esp, 1);
-      f->eax = filesize(fd);
+      int* fd = (int *)get_offset_ptr(f->esp, 1);
+      if(!validate_user_ptr(fd)){
+        exit(EXIT_ERROR);
+        break;
+      }
+      f->eax = filesize((int)*fd);
       break;
     }
     case SYS_READ:
     {
       int fd = *(int *)get_offset_ptr(f->esp, 1);
-      void *buffer = *(int *)get_offset_ptr(f->esp, 2);
-      unsigned length = *(int *)get_offset_ptr(f->esp, 3);
+      void *buffer = *(void **)get_offset_ptr(f->esp, 2);
+      unsigned length = *(unsigned *)get_offset_ptr(f->esp, 3);
       f->eax = read(fd, buffer, length);
       break;
     }
     case SYS_WRITE:
     {
-      int fd = *(int *)get_offset_ptr(f->esp, 1);
-      const void *buffer = *(int *)get_offset_ptr(f->esp, 2);
-      unsigned length = *(int *)get_offset_ptr(f->esp, 3);
-      f->eax = write(fd, buffer, length);
+      int* fd = (int *)get_offset_ptr(f->esp, 1);
+      const void *buffer = *(void **)get_offset_ptr(f->esp, 2);
+      unsigned* length = (unsigned *)get_offset_ptr(f->esp, 3);
+      f->eax = write((int)*fd, buffer, (unsigned)*length);
       break;
     }
     case SYS_SEEK:
@@ -257,7 +267,10 @@ int filesize (int fd){
   struct file *f = curr_t->fd_table[fd];
   if(f == NULL)
     return EXIT_ERROR;
-  return file_length(f);
+  lock_acquire(&file_system_lock);
+  off_t length = file_length(f);
+  lock_release(&file_system_lock);
+  return length;
 }
 
 
@@ -274,10 +287,6 @@ int read (int fd, void *buffer, unsigned size)
       buf[i] = input_getc();
     }
     read_size = size;
-  }
-  else if(fd == STDOUT){
-    exit(EXIT_ERROR);
-    return 0;
   }
   else{
     struct thread *curr_t = thread_current();
@@ -299,10 +308,6 @@ write (int fd, const void *buffer, unsigned length)
     putbuf(buffer, length);
     written_size = length;
   }
-  else if(fd == STDIN){
-    exit(EXIT_ERROR);
-    return 0;
-  }
   else{
     struct thread *curr_t = thread_current();
     struct file *f = curr_t->fd_table[fd];
@@ -321,8 +326,10 @@ void seek (int fd, unsigned position)
 {
   struct thread *curr_t = thread_current();
   struct file *f = curr_t->fd_table[fd];
-  if(f == NULL)
-    return EXIT_ERROR;
+  if(f == NULL){
+    exit(EXIT_ERROR);
+    return;
+  }
   lock_acquire(&file_system_lock);
   file_seek(f, position);
   lock_release(&file_system_lock);
@@ -348,22 +355,17 @@ void close (int fd)
 {
   struct thread *curr_t = thread_current();
   struct file *f = curr_t->fd_table[fd];
-  if(f == NULL)
-    return EXIT_ERROR;
+  if(f == NULL){
+    exit(EXIT_ERROR);
+    return;
+  }
   lock_acquire(&file_system_lock);
   file_close(f);
   lock_release(&file_system_lock);
 }
 
-/*
- * Checks if the pointer is a valid user pointer
- * User pointer is valid if it is not null pointer, 
- * a pointer to kernel virtual address space (above PHYS_BASE)
- * or a pointer to unmapped virtual memory, 
- */
-static 
-bool validate_user_ptr(const void *ptr)
-{
+static
+bool is_valid_ptr(const void *ptr){
   if (ptr == NULL) {
     return false;
   }
@@ -379,12 +381,24 @@ bool validate_user_ptr(const void *ptr)
 
   return true;
 }
+/*
+ * Checks if the pointer is a valid user pointer
+ * User pointer is valid if it is not null pointer, 
+ * a pointer to kernel virtual address space (above PHYS_BASE)
+ * or a pointer to unmapped virtual memory, 
+ */
+static 
+bool validate_user_ptr(const void *ptr)
+{
+  // validate ptr and next to ensure that the first byte is not the only valid byte 
+  return is_valid_ptr(ptr) && is_valid_ptr(ptr+4);
+}
 
 static 
 bool validate_user_buffer(const void *buffer, unsigned size)
 {
   for(unsigned i = 0; i < size; i++){
-    if(!validate_user_ptr(buffer + i))
+    if(!is_valid_ptr(buffer + i))
       return false;
   }
   return true;
@@ -393,11 +407,11 @@ bool validate_user_buffer(const void *buffer, unsigned size)
 static 
 bool validate_user_string(const char *str)
 {
-  if(!validate_user_ptr(str) || *str == '\0')
+  if(!is_valid_ptr(str) || *str == '\0')
     return false;
   while(*str != '\0'){
     str++;
-    if(!validate_user_ptr(str))
+    if(!is_valid_ptr(str))
       return false;
   }
   return true;

@@ -95,6 +95,7 @@ start_process (void *command)
     palloc_free_page (command);
     palloc_free_page(args);
     thread_exit ();
+    return;
   }
 
   /* Setup user stack with arguments from the command */  
@@ -163,28 +164,34 @@ process_wait (tid_t child_tid UNUSED)
 void
 process_exit (void)
 {
-  struct thread *cur = thread_current ();
+  struct thread *curr_t = thread_current ();
   uint32_t *pd;
 
-  // Close all files
-  for (int i = 2; i < cur->next_fd; i++)
+  if (curr_t->running_file != NULL)
   {
-    if (cur->fd_table[i] != NULL)
-      file_close(cur->fd_table[i]);
+    file_allow_write(curr_t->running_file);
+    file_close(curr_t->running_file);
+  }
+
+  // Close all files
+  for (int i = 2; i < curr_t->next_fd; i++)
+  {
+    if (curr_t->fd_table[i] != NULL)
+      file_close(curr_t->fd_table[i]);
   }
   // Dealloc memory of fd_table
-  if(cur->fd_table != NULL)
-    free(cur->fd_table);
+  if(curr_t->fd_table != NULL)
+    free(curr_t->fd_table);
   
   // Wait for child to get exit status
-  sema_up(&cur->pre_exit_sema);
+  sema_up(&curr_t->pre_exit_sema);
 
   // Notify parent that exit status has been obtained
-  sema_down(&cur->post_exit_sema);
+  sema_down(&curr_t->post_exit_sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
-  pd = cur->pagedir;
+  pd = curr_t->pagedir;
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set
@@ -194,7 +201,7 @@ process_exit (void)
          directory before destroying the process's page
          directory, or our active page directory will be one
          that's been freed (and cleared). */
-      cur->pagedir = NULL;
+      curr_t->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
@@ -395,8 +402,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
   success = true;
 
  done:
+  if(success){
+    t->running_file = file;
+    file_deny_write(file);
+  }
+  else{
+    file_close (file);
+  }
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   return success;
 }
 
