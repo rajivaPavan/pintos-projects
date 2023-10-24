@@ -102,10 +102,6 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       }
       int fd = open(file);
-      if(fd == EXIT_ERROR){
-        exit(EXIT_ERROR);
-        break;
-      }
       f->eax = fd;
       break;
     }
@@ -124,6 +120,10 @@ syscall_handler (struct intr_frame *f UNUSED)
       int fd = *(int *)get_offset_ptr(f->esp, 1);
       void *buffer = *(void **)get_offset_ptr(f->esp, 2);
       unsigned length = *(unsigned *)get_offset_ptr(f->esp, 3);
+      if(!validate_user_buffer(buffer, length)){
+        exit(EXIT_ERROR);
+        break;
+      } 
       f->eax = read(fd, buffer, length);
       break;
     }
@@ -132,6 +132,10 @@ syscall_handler (struct intr_frame *f UNUSED)
       int* fd = (int *)get_offset_ptr(f->esp, 1);
       const void *buffer = *(void **)get_offset_ptr(f->esp, 2);
       unsigned* length = (unsigned *)get_offset_ptr(f->esp, 3);
+      if(!validate_user_buffer(buffer, *length)){
+        exit(EXIT_ERROR);
+        break;
+      }
       f->eax = write((int)*fd, buffer, (unsigned)*length);
       break;
     }
@@ -150,8 +154,12 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_CLOSE:
     {
-      int fd = *(int *)get_offset_ptr(f->esp, 1);
-      close(fd);
+      void* fd = get_offset_ptr(f->esp, 1);
+      if(!validate_user_ptr(fd)){
+        exit(EXIT_ERROR);
+        break;
+      }
+      close(*(int*)fd);
       break;
     }
     default:
@@ -361,9 +369,16 @@ void close (int fd)
   }
   lock_acquire(&file_system_lock);
   file_close(f);
+  f = NULL;
   lock_release(&file_system_lock);
 }
 
+/*
+ * Checks if the pointer is a valid user pointer
+ * User pointer is valid if it is not null pointer, 
+ * a pointer to kernel virtual address space (above PHYS_BASE)
+ * or a pointer to unmapped virtual memory, 
+ */
 static
 bool is_valid_ptr(const void *ptr){
   if (ptr == NULL) {
@@ -381,12 +396,7 @@ bool is_valid_ptr(const void *ptr){
 
   return true;
 }
-/*
- * Checks if the pointer is a valid user pointer
- * User pointer is valid if it is not null pointer, 
- * a pointer to kernel virtual address space (above PHYS_BASE)
- * or a pointer to unmapped virtual memory, 
- */
+
 static 
 bool validate_user_ptr(const void *ptr)
 {
@@ -407,7 +417,7 @@ bool validate_user_buffer(const void *buffer, unsigned size)
 static 
 bool validate_user_string(const char *str)
 {
-  if(!is_valid_ptr(str) || *str == '\0')
+  if(!is_valid_ptr(str))
     return false;
   while(*str != '\0'){
     str++;
