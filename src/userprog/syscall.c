@@ -67,8 +67,15 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     }
     case SYS_WAIT:
-      wait(*(int *)get_offset_ptr(f->esp, 1));
+    {
+      void* pid = (void*)get_offset_ptr(f->esp, 1);
+      if(!validate_user_ptr(pid)){
+        exit(EXIT_ERROR);
+        break;
+      }
+      f->eax = wait(*(pid_t*)pid);
       break;
+    }
     case SYS_CREATE:
     {
       char* file = *(char **)get_offset_ptr(f->esp, 1);
