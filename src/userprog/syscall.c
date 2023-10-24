@@ -57,7 +57,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_EXEC:
     {
-      char* cmd_line = (char *)get_offset_ptr(f->esp, 1);
+      char* cmd_line = *(char **)get_offset_ptr(f->esp, 1);
       // if cmd_line is null pointer or empty string, exit
       if(!validate_user_string(cmd_line)){
         exit(EXIT_ERROR);
@@ -78,8 +78,10 @@ syscall_handler (struct intr_frame *f UNUSED)
       }
       unsigned int initial_size = *(unsigned int *)get_offset_ptr(f->esp, 2);
       bool success = create(file, initial_size);
-      if(!success)
+      if (!success)
+      {
         exit(EXIT_ERROR);
+      }
       break;
     }
     case SYS_REMOVE:
