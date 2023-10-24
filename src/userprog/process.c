@@ -151,15 +151,16 @@ process_wait (tid_t child_tid UNUSED)
   if (child_elem == list_end(&current_thread->child_list)) 
     return -1; 
 
-  intr_disable();
-  list_remove(child_elem);
-  intr_enable();
-  
   // Wait for child thread to exit
   sema_down(&child_thread->pre_exit_sema);
   int exit_status = child_thread->exit_status;
   // childs exit status was obtained, can safely exit now
   sema_up(&child_thread->post_exit_sema);
+  
+
+  intr_disable();
+  list_remove(child_elem);
+  intr_enable();
 
   return exit_status;
 }
