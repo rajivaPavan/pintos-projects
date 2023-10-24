@@ -18,6 +18,7 @@ static bool validate_user_ptr (const void *ptr);
 static bool validate_user_buffer(const void *buffer, unsigned size);
 static bool validate_user_string(const char *str);
 static void *get_offset_ptr(void *ptr, int n);
+static int get_fd_from_filename(struct thread *t, char *filename);
 
 #define STDOUT STDOUT_FILENO
 #define STDIN STDIN_FILENO
@@ -154,12 +155,16 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_CLOSE:
     {
-      void* fd = get_offset_ptr(f->esp, 1);
-      if(!validate_user_ptr(fd)){
+      void* file_name = get_offset_ptr(f->esp, 1);
+      if(!validate_user_ptr(file_name)){
         exit(EXIT_ERROR);
         break;
       }
-      close(*(int*)fd);
+      int fd = get_fd_from_filename(thread_current(), (char*)file_name);
+      if(fd == NULL){
+        break;
+      }
+      close(fd);
       break;
     }
     default:
@@ -364,7 +369,6 @@ void close (int fd)
   struct thread *curr_t = thread_current();
   struct file *f = curr_t->fd_table[fd];
   if(f == NULL){
-    exit(EXIT_ERROR);
     return;
   }
   lock_acquire(&file_system_lock);
@@ -432,4 +436,18 @@ void *get_offset_ptr(void *ptr, int n)
 {
   void *next_ptr = ptr + 4*n;
   return next_ptr;
+}
+
+static
+int get_fd_from_filename(struct thread *t, char *filename)
+{
+  struct file *f;
+  for(int i = 0; i < t->next_fd; i++){
+    f = t->fd_table[i];
+    if(f == NULL)
+      continue;
+    if(strcmp(filename, f) == 0)
+      return i;
+  }
+  return NULL;
 }
