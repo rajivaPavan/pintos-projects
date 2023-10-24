@@ -1,15 +1,10 @@
-		     +--------------------------+
-       	     |		    CS 140		    |
-		     | PROJECT 2: USER PROGRAMS	|
-		     | 	   DESIGN DOCUMENT     	|
-		     +--------------------------+
+# PROJECT 2: USER PROGRAMS DESIGN DOCUMENT
 
-R. P. Pitiwaduge 210479L rajiva.21@cse.mrt.ac.lk
+By R. P. Pitiwaduge 210479L (rajiva.21@cse.mrt.ac.lk)
 
-			   ARGUMENT PASSING
-			   ================
+## ARGUMENT PASSING
 
----- ALGORITHMS ----
+###  ALGORITHMS 
 
 > A2: Briefly describe how you implemented argument parsing.  
 
@@ -37,7 +32,7 @@ Finally, the function saves a fake return address on the stack and frees the mem
 
 Not handled
 
----- RATIONALE ----
+### RATIONALE
 
 > A3: Why does Pintos implement strtok_r() but not strtok()?
 
@@ -49,10 +44,9 @@ separation.  Identify at least two advantages of the Unix approach.
 
 Memory used by the kernel to seperate the commands into executable name and arguments is saved, when this is handled by the shell.
 
-			     SYSTEM CALLS
-			     ============
+## SYSTEM CALLS
 
----- DATA STRUCTURES ----
+### DATA STRUCTURES
 
 - thread.h
 
@@ -92,9 +86,7 @@ struct lock file_system_lock;
 ```
 The above code snippet shows the data structure used to synchronize file system operations.
 
-> B2: Describe how file descriptors are associated with open files.
-> Are file descriptors unique within the entire OS or just within a
-> single process?
+> B2: Describe how file descriptors are associated with open files. Are file descriptors unique within the entire OS or just within a single process?
 
 The `struct thread` has a member
 ```c
@@ -102,7 +94,7 @@ struct file **fd_table;
 ``` 
  which is an array of pointers to `struct file*` pointers. The file descriptor is the index of the array. Therefore, file descriptors are unique within a single process.
 
----- ALGORITHMS ----
+### ALGORITHMS 
 
 > B3: Describe your code for reading and writing user data from the
 kernel.
@@ -117,57 +109,119 @@ Both functions are given a valid buffer, validated using `validate_user_buffer()
 
 The `read()` and `write()` function also uses the `file_system_lock` lock to ensure that file reads are performed atomically. This prevents multiple threads from reading from the same file at the same time and corrupting the file data.
 
->> B4: Suppose a system call causes a full page (4,096 bytes) of data
->> to be copied from user space into the kernel.  What is the least
->> and the greatest possible number of inspections of the page table
->> (e.g. calls to pagedir_get_page()) that might result?  What about
->> for a system call that only copies 2 bytes of data?  Is there room
->> for improvement in these numbers, and how much?
+> B4: Suppose a system call causes a full page (4,096 bytes) of data to be copied from user space into the kernel.  What is the least and the greatest possible number of inspections of the page table (e.g. calls to pagedir_get_page()) that might result?  What about for a system call that only copies 2 bytes of data?  Is there room for improvement in these numbers, and how much?
 
->> B5: Briefly describe your implementation of the "wait" system call
->> and how it interacts with process termination.
+> B5: Briefly describe your implementation of the "wait" system call and how it interacts with process termination.
 
->> B6: Any access to user program memory at a user-specified address
->> can fail due to a bad pointer value.  Such accesses must cause the
->> process to be terminated.  System calls are fraught with such
->> accesses, e.g. a "write" system call requires reading the system
->> call number from the user stack, then each of the call's three
->> arguments, then an arbitrary amount of user memory, and any of
->> these can fail at any point.  This poses a design and
->> error-handling problem: how do you best avoid obscuring the primary
->> function of code in a morass of error-handling?  Furthermore, when
->> an error is detected, how do you ensure that all temporarily
->> allocated resources (locks, buffers, etc.) are freed?  In a few
->> paragraphs, describe the strategy or strategies you adopted for
->> managing these issues.  Give an example.
+The `wait()` system call takes a single argument: `pid` and directly calls the `process_wait()` function. This function first looks up the thread associated with the given `pid` in the current thread's child list. If the thread is not found, the function returns -1. Otherwise, the function removes the child thread list element from the child list and waits for the child thread to begin exiting by waiting on the child thread's `pre_exit_sema`. The function then returns the child thread's exit status. The child thread's exit status is set when the child thread calls `exit()`. The child thread waits for the parent to get the exit status by waiting on the `post_exit_sema`. The child thread then exits by calling `thread_exit()`. The parent thread then returns the child thread's exit status. 
 
----- SYNCHRONIZATION ----
+> B6: Any access to user program memory at a user-specified address can fail due to a bad pointer value.  Such accesses must cause the process to be terminated.  System calls are fraught with such accesses, e.g. a "write" system call requires reading the system call number from the user stack, then each of the call's three arguments, then an arbitrary amount of user memory, and any of these can fail at any point.  This poses a design and error-handling problem: how do you best avoid obscuring the primary function of code in a morass of error-handling?  Furthermore, when an error is detected, how do you ensure that all temporarily allocated resources (locks, buffers, etc.) are freed?  In a few paragraphs, describe the strategy or strategies you adopted for managing these issues.  Give an example.
 
->> B7: The "exec" system call returns -1 if loading the new executable
->> fails, so it cannot return before the new executable has completed
->> loading.  How does your code ensure this?  How is the load
->> success/failure status passed back to the thread that calls "exec"?
+- Validation of User Pointers:
 
->> B8: Consider parent process P with child process C.  How do you
->> ensure proper synchronization and avoid race conditions when P
->> calls wait(C) before C exits?  After C exits?  How do you ensure
->> that all resources are freed in each case?  How about when P
->> terminates without waiting, before C exits?  After C exits?  Are
->> there any special cases?
+The `validate_user_ptr()` function checks whether a given pointer is valid or not. It ensures that the pointer is not a null pointer, not pointing to kernel virtual address space, and not pointing to unmapped virtual memory. This validation is crucial because it prevents unauthorized access to the kernel's memory space.
 
----- RATIONALE ----
+- Validation of User Buffers and Strings:
 
->> B9: Why did you choose to implement access to user memory from the
->> kernel in the way that you did?
+The `validate_user_buffer()` function and validate_user_string function check the validity of user buffers and strings, respectively. These checks make sure that the entire range of memory used for reading or writing data is valid.
 
+- Handling Bad Pointers:
+
+If a bad pointer is detected during a system call, the validate_user_ptr function ensures that the process is terminated with an error status (usually `EXIT_ERROR`). 
+
+- Specific System Calls:
+
+The code implements specific error-checking for various system calls such as exec, wait, create, remove, open, read, write, and others. These checks ensure that the inputs are valid, and if not, they lead to process termination with an error status.
+
+Certainly, let's take the `SYS_WRITE` system call as an example of how the code manages issues related to user memory access and error handling:
+
+```c
+case SYS_WRITE:
+{
+  int* fd = (int *)get_offset_ptr(f->esp, 1);
+  const void *buffer = *(void **)get_offset_ptr(f->esp, 2);
+  unsigned* length = (unsigned *)get_offset_ptr(f->esp, 3);
+  if(!validate_user_buffer(buffer, *length)){
+    exit(EXIT_ERROR);
+    break;
+  }
+  f->eax = write((int)*fd, buffer, (unsigned)*length);
+  break;
+}
+```
+
+In this example:
+
+1. The system call number is checked, and the code executes the `SYS_WRITE` case.
+
+2. The code retrieves the file descriptor (`fd`), buffer, and length of data to be written from the user stack using `get_offset_ptr`.
+
+3. It then calls `validate_user_buffer(buffer, *length)` to check if the provided buffer is valid. This is essential to ensure that the code doesn't write to or read from unauthorized or invalid memory locations.
+
+4. If `validate_user_buffer` returns `false`, indicating a bad pointer, the `exit(EXIT_ERROR)` function is called. This causes the process to be terminated with an error status, preventing any further execution.
+
+5. If the buffer is valid, the code proceeds to call the `write` function, passing the file descriptor, buffer, and length as arguments.
+
+Consider take the SYS_WRITE system call as an example of how the code manages issues related to user memory access and error handling.
+
+```c
+case SYS_WRITE:
+{
+  int* fd = (int *)get_offset_ptr(f->esp, 1);
+  const void *buffer = *(void **)get_offset_ptr(f->esp, 2);
+  unsigned* length = (unsigned *)get_offset_ptr(f->esp, 3);
+  if(!validate_user_buffer(buffer, *length)){
+    exit(EXIT_ERROR);
+    break;
+  }
+  f->eax = write((int)*fd, buffer, (unsigned)*length);
+  break;
+}
+```
+1. The system call number is checked, and the code executes the `SYS_WRITE` case.
+
+2. The code retrieves the file descriptor (`fd`), `buffer`, and length of data to be written from the user stack using `get_offset_ptr`.
+
+3. It then calls `validate_user_buffer(buffer, *length)` to check if the provided buffer is valid. This is essential to ensure that the code doesn't write to or read from unauthorized or invalid memory locations.
+
+4. If `validate_user_buffer` returns false, indicating a bad pointer, the exit(EXIT_ERROR) function is called. This causes the process to be terminated with an error status, preventing any further execution.
+
+5. If the buffer is valid, the code proceeds to call the write function, passing the file descriptor, buffer, and length as arguments.
+
+### SYNCHRONIZATION
+
+> B7: The "exec" system call returns -1 if loading the new executable fails, so it cannot return before the new executable has completed loading.  How does your code ensure this?  How is the load success/failure status passed back to the thread that calls "exec"?
+
+- Synchronization Mechanism:
+
+The exec system call uses a semaphore named `file_load_sema` to synchronize between the parent and child threads.
+The parent thread waits for the child to signal successful loading using `sema_down(&child_t->file_load_sema)`.
+If loading fails, the semaphore count remains at 0, blocking the parent thread.
+
+- Passing Load Status Back:
+
+The child process sets a `load_success` flag to indicate loading success.
+The parent thread checks this flag to determine loading status.
+If `load_success` is `true`, exec returns the child's PID.
+If `load_success` is `false`, exec returns -1 to indicate failure.
+
+> B8: Consider parent process P with child process C.  How do you ensure proper synchronization and avoid race conditions when P calls wait(C) before C exits?  After C exits?  How do you ensure that all resources are freed in each case?  How about when P terminates without waiting, before C exits?  After C exits?  Are there any special cases?
+
+The above synchronization problem is solved using the two semaphores `pre_exit_sema` and `post_exit_sema`. The `pre_exit_sema` is used to ensure that the parent thread waits for the child thread to begin exiting. The `post_exit_sema` is used to ensure that the child thread waits for the parent thread to get the exit status. The `exit_status` attribute of the child thread is set when the child thread calls `exit()`. The child thread waits for the parent to get the exit status by waiting on the `post_exit_sema`. The child thread then exits by calling `thread_exit()`. The parent thread then returns the child thread's exit status.
+
+### RATIONALE
+
+> B9: Why did you choose to implement access to user memory from the kernel in the way that you did?
+
+The `validate_user_ptr()` function checks whether a given pointer is valid or not. It ensures that the pointer is not a null pointer, not pointing to kernel virtual address space, and not pointing to unmapped virtual memory. This validation is crucial because it prevents unauthorized access to the kernel's memory space. This method was chosen because it is simple and efficient.
 
 >B10: What advantages or disadvantages can you see to your design
 >for file descriptors?
 
 Using just `struct file**` is simple to use and understand. However, it is not very efficient as the array has to be resized when the number of open files exceeds the size of the array. This can be improved by using a hash table instead of an array.
 
->> B11: The default tid_t to pid_t mapping is the identity mapping.
->> If you changed it, what advantages are there to your approach?
+> B11: The default tid_t to pid_t mapping is the identity mapping. If you changed it, what advantages are there to your approach?
 
+Not changed
 
 ---
