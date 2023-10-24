@@ -216,6 +216,7 @@ thread_create (const char *name, int priority,
   // initialize the semaphores for parent and child
   sema_init(&t->pre_exit_sema, 0);
   sema_init(&t->post_exit_sema, 0);
+  sema_init(&t->file_load_sema, 0);
 
   /* Allocate file descriptor table */
   t -> fd_table = malloc(sizeof(struct file *) * 64);

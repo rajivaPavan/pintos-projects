@@ -207,8 +207,7 @@ pid_t exec(const char *cmd_line)
   struct thread *child_t;
   struct list_elem *child_elem;
 
-  // execute cmd_args and make a child process
-  // printf("## from %s sys exec %s \n", thread_current()->name, cmd_args);
+  // execute cmd_line and make a child process
   tid_t child_tid = process_execute(cmd_line);
   if (child_tid == TID_ERROR)
   {
@@ -229,6 +228,10 @@ pid_t exec(const char *cmd_line)
   }
   // If child with child_tid was not in list, its not a child of the calling process
   if (child_elem == list_end(&curr_t->child_list))
+    return EXIT_ERROR;
+
+  sema_down(&child_t->file_load_sema);
+  if (!child_t->load_success)
     return EXIT_ERROR;
 
   return child_tid;

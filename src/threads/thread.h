@@ -100,6 +100,8 @@ struct thread
     int exit_status;                    /* For parent process that wait for this. This is set when exit system call is made */
     struct semaphore pre_exit_sema;     /* Semaphore for parent process to wait for child to begin exiting and set its exit_status */
     struct semaphore post_exit_sema;    /* Semaphore for child to wait for parent to get exit status */
+    struct semaphore file_load_sema;    /* Semaphore for parent to wait for child to load file */
+    bool load_success;                  /* True if child successfully loaded file */
 
     /* Used for file system */
     struct file **fd_table;             /* File descriptor table */

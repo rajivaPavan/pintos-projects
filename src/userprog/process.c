@@ -89,6 +89,10 @@ start_process (void *command)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+    
+  struct thread *curr_t = thread_current();
+  curr_t->load_success = success;
+  sema_up(&curr_t->file_load_sema);
   
   /* If load failed, quit. */
   if (!success) {
