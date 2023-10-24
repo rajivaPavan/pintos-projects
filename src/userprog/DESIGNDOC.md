@@ -6,31 +6,16 @@
 
 R. P. Pitiwaduge 210479L rajiva.21@cse.mrt.ac.lk
 
----- PRELIMINARIES ----
-
->> If you have any preliminary comments on your submission, notes for the
->> TAs, or extra credit, please give them here.
-
->> Please cite any offline or online sources you consulted while
->> preparing your submission, other than the Pintos documentation, course
->> text, lecture notes, and course staff.
-
 			   ARGUMENT PASSING
 			   ================
-
----- DATA STRUCTURES ----
-
->> A1: Copy here the declaration of each new or changed `struct' or
->> `struct' member, global or static variable, `typedef', or
->> enumeration.  Identify the purpose of each in 25 words or less.
 
 ---- ALGORITHMS ----
 
 > A2: Briefly describe how you implemented argument parsing.  
 
-When a new process is created using the `process_execute` function, the name of the thread to be created is extracted from the filename parameter. This is done by using the `strtok_r` function to tokenize the filename parameter and extract the first token, which represents the name of the executable file. The extracted name is then used as the name of the new thread that will be created to run the executable.
+When a new process is created using the `process_execute()` function, the name of the thread to be created is extracted from the filename parameter. This is done by using the `strtok_r()` function to tokenize the filename parameter and extract the first token, which represents the name of the executable file. The extracted name is then used as the name of the new thread that will be created to run the executable.
 
-Moving on to the `start_process` function; Technically, the parameter `file_name_` in `static void start_process (void *file_name_)` consists of the file name of the executable and arguements passed along with it. Therefore, it was renamed to `command_` which was a more suitable variable name.
+Moving on to the `start_process()` function; Technically, the parameter `file_name_` in `static void start_process (void *file_name_)` consists of the file name of the executable and arguements passed along with it. Therefore, it was renamed to `command_` which was a more suitable variable name.
 
 > How do you arrange for the elements of argv[] to be in the right order?
 
@@ -48,7 +33,7 @@ The function then saves the address of the pointer to the array of pointers to a
 
 Finally, the function saves a fake return address on the stack and frees the memory allocated for the `arg_ptr` array.
 
->> How do you avoid overflowing the stack page?
+> How do you avoid overflowing the stack page?
 
 Not handled
 
@@ -69,18 +54,68 @@ Memory used by the kernel to seperate the commands into executable name and argu
 
 ---- DATA STRUCTURES ----
 
->> B1: Copy here the declaration of each new or changed `struct' or
->> `struct' member, global or static variable, `typedef', or
->> enumeration.  Identify the purpose of each in 25 words or less.
+- thread.h
 
->> B2: Describe how file descriptors are associated with open files.
->> Are file descriptors unique within the entire OS or just within a
->> single process?
+```c
+struct thread
+{
+	...
+
+	/* Used for processes */
+    struct list child_list;             /* List of child threads */
+    struct list_elem child_elem;        /* List element for child threads list */
+    int exit_status;                    /* For parent process that wait for this. This is set when exit system call is made */
+    struct semaphore pre_exit_sema;     /* Semaphore for parent process to wait for child to begin exiting and set its exit_status */
+    struct semaphore post_exit_sema;    /* Semaphore for child to wait for parent to get exit status */
+    struct semaphore file_load_sema;    /* Semaphore for parent to wait for child to load file */
+    bool load_success;                  /* True if child successfully loaded file */
+
+    /* Used for file system */
+    struct file **fd_table;             /* File descriptor table */
+    int next_fd;                        /* Next available file descriptor */
+    struct file *running_file;          /* Running file of process */
+
+	...
+}
+```
+
+The above code snippet shows the data structures used for process and file system calls. Each attribute is explained in the comments.
+
+
+- syscall.h
+```c
+/* 
+ * File system lock
+ * Used to synchronize file system operations
+ */
+struct lock file_system_lock;   
+```
+The above code snippet shows the data structure used to synchronize file system operations.
+
+> B2: Describe how file descriptors are associated with open files.
+> Are file descriptors unique within the entire OS or just within a
+> single process?
+
+The `struct thread` has a member
+```c
+struct file **fd_table;
+``` 
+ which is an array of pointers to `struct file*` pointers. The file descriptor is the index of the array. Therefore, file descriptors are unique within a single process.
 
 ---- ALGORITHMS ----
 
->> B3: Describe your code for reading and writing user data from the
->> kernel.
+> B3: Describe your code for reading and writing user data from the
+kernel.
+
+The read and write functions in `syscall.c` are used to read and write user data from the kernel.
+
+The read function takes three arguments: `fd`, `buffer`, and `size`. The `fd` argument specifies the file descriptor to read from. If `fd` is `STDIN`, the function reads from the keyboard using `input_getc()`. Otherwise, the function looks up the file associated with the file descriptor in the current thread's file descriptor table and reads from the file using `file_read()`. The function returns the number of bytes actually read, or -1 if an error occurs.
+
+The write function takes three arguments: `fd`, `buffer`, and `length`. The `fd` argument specifies the file descriptor to write to. If `fd` is STDOUT, the function writes to the console using `putbuf()`. Otherwise the function looks up the file associated with the file descriptor in the current thread's file descriptor table and writes to the file using `file_write()`. The function returns the number of bytes actually written, or -1 if an error occurs.
+
+Both functions are given a valid buffer, validated using `validate_user_buffer()` function to check that the buffer argument has a valid user pointers. This ensures that the kernel does not read or write to invalid memory locations.
+
+The `read()` and `write()` function also uses the `file_system_lock` lock to ensure that file reads are performed atomically. This prevents multiple threads from reading from the same file at the same time and corrupting the file data.
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -125,34 +160,14 @@ Memory used by the kernel to seperate the commands into executable name and argu
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
->> B10: What advantages or disadvantages can you see to your design
->> for file descriptors?
+
+>B10: What advantages or disadvantages can you see to your design
+>for file descriptors?
+
+Using just `struct file**` is simple to use and understand. However, it is not very efficient as the array has to be resized when the number of open files exceeds the size of the array. This can be improved by using a hash table instead of an array.
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
 
-			   SURVEY QUESTIONS
-			   ================
-
-Answering these questions is optional, but it will help us improve the
-course in future quarters.  Feel free to tell us anything you
-want--these questions are just to spur your thoughts.  You may also
-choose to respond anonymously in the course evaluations at the end of
-the quarter.
-
->> In your opinion, was this assignment, or any one of the three problems
->> in it, too easy or too hard?  Did it take too long or too little time?
-
->> Did you find that working on a particular part of the assignment gave
->> you greater insight into some aspect of OS design?
-
->> Is there some particular fact or hint we should give students in
->> future quarters to help them solve the problems?  Conversely, did you
->> find any of our guidance to be misleading?
-
->> Do you have any suggestions for the TAs to more effectively assist
->> students, either for future quarters or the remaining projects?
-
->> Any other comments?
 
 ---
