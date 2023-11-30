@@ -85,10 +85,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       }
       unsigned int initial_size = *(unsigned int *)get_offset_ptr(f->esp, 2);
       bool success = create(file, initial_size);
-      if (!success)
-      {
-        exit(EXIT_ERROR);
-      }
+      f->eax = success;
       break;
     }
     case SYS_REMOVE:
