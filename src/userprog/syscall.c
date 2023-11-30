@@ -20,9 +20,6 @@ static bool validate_user_string(const char *str);
 static void *get_offset_ptr(void *ptr, int n);
 static int get_fd_from_filename(struct thread *t, char *filename);
 
-#define STDOUT STDOUT_FILENO
-#define STDIN STDIN_FILENO
-
 void
 syscall_init (void) 
 {
@@ -96,8 +93,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       }
       bool success = remove(file);
-      if(!success)
-        exit(EXIT_ERROR);
+      f->eax = success;
       break;
     }
     case SYS_OPEN:
@@ -303,12 +299,14 @@ Fd 0 reads from the keyboard using input_getc(). */
 int read (int fd, void *buffer, unsigned size)
 {
   int read_size = 0;
-  if(fd == STDIN){
+  if(fd == STDIN_FILENO){
     uint8_t *buf = (uint8_t *)buffer;
     for(unsigned i = 0; i < size; i++){
       buf[i] = input_getc();
     }
     read_size = size;
+  }else if(fd == STDOUT_FILENO){
+    return EXIT_ERROR;
   }
   else{
     struct thread *curr_t = thread_current();
@@ -326,9 +324,12 @@ int
 write (int fd, const void *buffer, unsigned length)
 {
   int written_size = 0;
-  if(fd == STDOUT){
+  if(fd == STDOUT_FILENO){
     putbuf(buffer, length);
     written_size = length;
+  }
+  else if(fd == STDIN_FILENO){
+    return EXIT_ERROR;
   }
   else{
     struct thread *curr_t = thread_current();

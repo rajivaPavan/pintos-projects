@@ -42,11 +42,16 @@ process_execute (const char *file_name)
   // only the first token should be given as the file name
   char *save_ptr;
   char *file_name_token;
-  file_name_token = strtok_r (file_name, " ", &save_ptr);
+  file_name_token = malloc(strlen(file_name) + 1);
+  strlcpy (file_name_token, file_name, strlen(file_name)+1);
+  file_name_token = strtok_r((char*) file_name_token, " ", &save_ptr );
+
   /* Create a new thread to execute EXEC_NAME. */
   tid = thread_create (file_name_token, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+
+  free(file_name_token); 
   return tid;
 }
 
