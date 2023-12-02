@@ -45,7 +45,8 @@ process_execute (const char *file_name)
   file_name_token = malloc(strlen(file_name) + 1);
   strlcpy (file_name_token, file_name, strlen(file_name)+1);
   file_name_token = strtok_r((char*) file_name_token, " ", &save_ptr );
-
+  file_name_token = realloc(file_name_token, strlen(file_name_token)+1);
+  
   /* Create a new thread to execute EXEC_NAME. */
   tid = thread_create (file_name_token, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
