@@ -163,10 +163,9 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       }
       int fd = get_fd_from_filename(thread_current(), (char*)file_name);
-      if(fd == NULL){
-        break;
+      if(fd != NULL){
+        close(fd);
       }
-      close(fd);
       break;
     }
     default:
