@@ -95,23 +95,23 @@ start_process (void *command)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-    
+  if (success) {
+    /* Setup user stack with arguments from the command */  
+    stack_arguments(args, arg_count, &if_.esp);
+  }
+
   struct thread *curr_t = thread_current();
   curr_t->load_success = success;
   sema_up(&curr_t->file_load_sema);
   
   /* If load failed, quit. */
-  if (!success) {
-    palloc_free_page (command);
-    palloc_free_page(args);
+  palloc_free_page (command);
+  palloc_free_page(args);
+
+  if(!success){
     thread_exit ();
     return;
   }
-
-  /* Setup user stack with arguments from the command */  
-  stack_arguments(args, arg_count, &if_.esp);
-  palloc_free_page (command);
-  palloc_free_page(args);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
